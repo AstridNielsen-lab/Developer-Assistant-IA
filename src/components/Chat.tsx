@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Send, Save, Plus, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, Save, Plus, Code2, User, Volume2, VolumeX } from 'lucide-react';
 import { Message } from '../types';
 import { API_URL, API_KEY } from '../config';
 
@@ -9,9 +9,57 @@ interface ChatProps {
 }
 
 export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([{
+    role: 'assistant',
+    content: "Fala dev! Beleza? Eu sou o Julio, seu assistente de programação! 😎 Tô aqui pra te ajudar com qualquer problema de código, não importa a linguagem. Pode mandar ver nas perguntas que a gente resolve junto! O que você precisa?"
+  }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+
+  useEffect(() => {
+    // Check if speech synthesis is supported
+    setSpeechEnabled('speechSynthesis' in window);
+  }, []);
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setSpeaking(false);
+  };
+
+  const speakMessage = (text: string) => {
+    if (!speechEnabled) return;
+
+    // Stop any ongoing speech
+    stopSpeaking();
+
+    // Remove code blocks and markdown for better speech
+    const cleanText = text.replace(/```[\s\S]*?```/g, 'código exemplo')
+                         .replace(/`.*?`/g, '')
+                         .replace(/\*\*/g, '');
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    // Configure speech settings
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    // Get available voices and set a Portuguese voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const portugueseVoice = voices.find(voice => voice.lang.includes('pt-BR'));
+    if (portugueseVoice) {
+      utterance.voice = portugueseVoice;
+    }
+
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -29,7 +77,17 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
           'Authorization': `Bearer ${API_KEY}`
         },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: input }] }]
+          contents: [{
+            role: 'user',
+            parts: [{
+              text: `You are Julio, a friendly and super intelligent virtual assistant from São Paulo, Brazil. 
+                     You're a Full Stack developer who knows every programming language and can solve complex 
+                     problems simply. Respond in a casual, friendly way typical of São Paulo, but maintain 
+                     technical clarity. Use some Brazilian Portuguese expressions naturally. 
+                     
+                     User question: ${input}`
+            }]
+          }]
         })
       });
 
@@ -40,12 +98,17 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Speak the new message
+      speakMessage(assistantMessage.content);
     } catch (error) {
       console.error('Error:', error);
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Sorry, there was an error processing your request.'
-      }]);
+      const errorMessage = {
+        role: 'assistant' as const,
+        content: 'Putz, deu um erro aqui! Vamo tentar de novo? 🤔'
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      speakMessage(errorMessage.content);
     }
 
     setLoading(false);
@@ -53,58 +116,110 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
+      <div className="bg-white border-b p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-500 p-2 rounded-full">
+              <Code2 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">Julio - Dev Assistant</h2>
+              <p className="text-sm text-gray-600">Desenvolvedor Full Stack de São Paulo</p>
+            </div>
+          </div>
+          {speechEnabled && (
+            <button
+              onClick={() => speaking ? stopSpeaking() : speakMessage(messages[messages.length - 1].content)}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              title={speaking ? "Parar de falar" : "Falar mensagem"}
+            >
+              {speaking ? (
+                <VolumeX className="w-6 h-6 text-gray-600" />
+              ) : (
+                <Volume2 className="w-6 h-6 text-gray-600" />
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message, index) => (
           <div
             key={index}
-            className={`p-4 rounded-lg ${
-              message.role === 'user'
-                ? 'bg-blue-100 ml-8'
-                : 'bg-white mr-8 shadow'
+            className={`flex gap-3 ${
+              message.role === 'user' ? 'flex-row-reverse' : ''
             }`}
           >
-            <p className="whitespace-pre-wrap">{message.content}</p>
-            {message.role === 'assistant' && (
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => onSaveCode(message.content)}
-                  className="p-2 text-sm bg-green-500 text-white rounded-md flex items-center gap-1"
-                >
-                  <Save size={16} /> Save
-                </button>
-                <button
-                  onClick={() => onAddToProject({
-                    name: 'new-file.txt',
-                    content: message.content
-                  })}
-                  className="p-2 text-sm bg-blue-500 text-white rounded-md flex items-center gap-1"
-                >
-                  <Plus size={16} /> Add to Project
-                </button>
-              </div>
-            )}
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+              message.role === 'user' ? 'bg-blue-100' : 'bg-blue-500'
+            }`}>
+              {message.role === 'user' ? (
+                <User className="w-5 h-5 text-blue-500" />
+              ) : (
+                <Code2 className="w-5 h-5 text-white" />
+              )}
+            </div>
+            <div
+              className={`p-4 rounded-lg max-w-[80%] ${
+                message.role === 'user'
+                  ? 'bg-blue-100'
+                  : 'bg-white shadow'
+              }`}
+            >
+              <p className="whitespace-pre-wrap">{message.content}</p>
+              {message.role === 'assistant' && message.content.includes('```') && (
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => onSaveCode(message.content)}
+                    className="p-2 text-sm bg-green-500 text-white rounded-md flex items-center gap-1 hover:bg-green-600 transition-colors"
+                  >
+                    <Save size={16} /> Salvar Código
+                  </button>
+                  <button
+                    onClick={() => onAddToProject({
+                      name: 'new-file.txt',
+                      content: message.content
+                    })}
+                    className="p-2 text-sm bg-blue-500 text-white rounded-md flex items-center gap-1 hover:bg-blue-600 transition-colors"
+                  >
+                    <Plus size={16} /> Adicionar ao Projeto
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ))}
         {loading && (
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+              <Code2 className="w-5 h-5 text-white" />
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow">
+              <div className="flex gap-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
           </div>
         )}
       </div>
-      <div className="p-4 border-t">
+
+      <div className="p-4 border-t bg-white">
         <div className="flex gap-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Ask for code generation or help..."
-            className="flex-1 p-2 border rounded-md"
+            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+            placeholder="Fala dev! Como posso te ajudar hoje?"
+            className="flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <button
             onClick={sendMessage}
             disabled={loading}
-            className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+            className="p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={20} />
           </button>
