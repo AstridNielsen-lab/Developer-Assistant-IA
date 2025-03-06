@@ -26,7 +26,6 @@ function App() {
   };
 
   const handleAddToProject = (file: { name: string; content: string }) => {
-    // Here we would implement the logic to save the file to the project
     toast.success(`File ${file.name} added to project`);
   };
 
@@ -39,12 +38,10 @@ function App() {
       <Toaster position="top-right" />
       
       <div className="flex-1 flex">
-        {/* Left side - Chat */}
         <div className="w-1/3 border-r">
           <Chat onSaveCode={handleSaveCode} onAddToProject={handleAddToProject} />
         </div>
 
-        {/* Right side - Editor and Console */}
         <div className="flex-1">
           {mounted && (
             <Split
@@ -58,7 +55,6 @@ function App() {
               snapOffset={30}
               dragInterval={1}
             >
-              {/* Editor Section */}
               <div className="overflow-hidden flex flex-col">
                 <div className="h-12 bg-gray-800 flex items-center px-4">
                   <select
@@ -82,9 +78,8 @@ function App() {
                 </div>
               </div>
 
-              {/* Console Section */}
               <div className="overflow-hidden">
-                <Console />
+                <Console code={code} language={language} />
               </div>
             </Split>
           )}
