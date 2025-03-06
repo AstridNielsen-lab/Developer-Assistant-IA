@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Save, Plus, Code2, User, Volume2, VolumeX } from 'lucide-react';
+import { Send, Save, Plus, Code2, User, Volume2, VolumeX, HelpCircle } from 'lucide-react';
 import { Message } from '../types';
 import { API_URL, API_KEY } from '../config';
+import HelpModal from './HelpModal';
 
 interface ChatProps {
   onSaveCode: (code: string) => void;
@@ -17,9 +18,9 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
   const [loading, setLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   useEffect(() => {
-    // Check if speech synthesis is supported
     setSpeechEnabled('speechSynthesis' in window);
   }, []);
 
@@ -31,23 +32,19 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
   const speakMessage = (text: string) => {
     if (!speechEnabled) return;
 
-    // Stop any ongoing speech
     stopSpeaking();
 
-    // Remove code blocks and markdown for better speech
     const cleanText = text.replace(/```[\s\S]*?```/g, 'código exemplo')
                          .replace(/`.*?`/g, '')
                          .replace(/\*\*/g, '');
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
     
-    // Configure speech settings
     utterance.lang = 'pt-BR';
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
-    // Get available voices and set a Portuguese voice if available
     const voices = window.speechSynthesis.getVoices();
     const portugueseVoice = voices.find(voice => voice.lang.includes('pt-BR'));
     if (portugueseVoice) {
@@ -80,32 +77,34 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
           contents: [{
             role: 'user',
             parts: [{
-              text: `You are Julio, a friendly and super intelligent virtual assistant from São Paulo, Brazil. 
-                     You're a Full Stack developer who knows every programming language and can solve complex 
-                     problems simply. Respond in a casual, friendly way typical of São Paulo, but maintain 
-                     technical clarity. Use some Brazilian Portuguese expressions naturally. 
-                     
-                     User question: ${input}`
+              text: input
             }]
           }]
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
+
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error('Invalid response format from API');
+      }
+
       const assistantMessage = {
         role: 'assistant' as const,
         content: data.candidates[0].content.parts[0].text
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-      
-      // Speak the new message
       speakMessage(assistantMessage.content);
     } catch (error) {
       console.error('Error:', error);
       const errorMessage = {
         role: 'assistant' as const,
-        content: 'Putz, deu um erro aqui! Vamo tentar de novo? 🤔'
+        content: 'Putz, deu um erro aqui! Vamo tentar de novo? Se o problema persistir, verifique sua conexão com a internet ou tente mais tarde. 🤔'
       };
       setMessages(prev => [...prev, errorMessage]);
       speakMessage(errorMessage.content);
@@ -127,19 +126,28 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
               <p className="text-sm text-gray-600">Desenvolvedor Full Stack de São Paulo</p>
             </div>
           </div>
-          {speechEnabled && (
+          <div className="flex items-center gap-2">
+            {speechEnabled && (
+              <button
+                onClick={() => speaking ? stopSpeaking() : speakMessage(messages[messages.length - 1].content)}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                title={speaking ? "Parar de falar" : "Falar mensagem"}
+              >
+                {speaking ? (
+                  <VolumeX className="w-6 h-6 text-gray-600" />
+                ) : (
+                  <Volume2 className="w-6 h-6 text-gray-600" />
+                )}
+              </button>
+            )}
             <button
-              onClick={() => speaking ? stopSpeaking() : speakMessage(messages[messages.length - 1].content)}
+              onClick={() => setIsHelpOpen(true)}
               className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-              title={speaking ? "Parar de falar" : "Falar mensagem"}
+              title="Ajuda"
             >
-              {speaking ? (
-                <VolumeX className="w-6 h-6 text-gray-600" />
-              ) : (
-                <Volume2 className="w-6 h-6 text-gray-600" />
-              )}
+              <HelpCircle className="w-6 h-6 text-gray-600" />
             </button>
-          )}
+          </div>
         </div>
       </div>
 
@@ -225,6 +233,8 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
           </button>
         </div>
       </div>
+
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 }
