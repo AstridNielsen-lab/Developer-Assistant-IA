@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Trash2, Play } from 'lucide-react';
+import { Terminal, Trash2, Play, GitBranch } from 'lucide-react';
 
 interface ConsoleProps {
   code: string;
@@ -7,15 +7,39 @@ interface ConsoleProps {
 }
 
 export default function Console({ code, language }: ConsoleProps) {
-  const [logs, setLogs] = useState<Array<{ type: 'output' | 'error' | 'info'; content: string }>>([]);
+  const [logs, setLogs] = useState<Array<{ type: 'output' | 'error' | 'info' | 'git'; content: string }>>([]);
+  const [input, setInput] = useState('');
   const consoleRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const clearConsole = () => setLogs([]);
+
+  const executeGitCommand = async (command: string) => {
+    const gitCommands = {
+      'git init': 'Initialized empty Git repository',
+      'git status': 'On branch main\nNothing to commit, working tree clean',
+      'git add': 'Added files to staging area',
+      'git commit': 'Created commit',
+      'git branch': '* main',
+      'git checkout': 'Switched to branch',
+      'git log': 'commit abc123\nAuthor: User\nDate: Now\n\n    Initial commit',
+      'git remote': 'origin',
+      'git push': 'Everything up-to-date',
+      'git pull': 'Already up to date.'
+    };
+
+    const matchedCommand = Object.keys(gitCommands).find(cmd => command.startsWith(cmd));
+    if (matchedCommand) {
+      setLogs(prev => [...prev, { type: 'git', content: `$ ${command}` }]);
+      setLogs(prev => [...prev, { type: 'output', content: gitCommands[matchedCommand] }]);
+    } else {
+      setLogs(prev => [...prev, { type: 'error', content: 'Git command not recognized' }]);
+    }
+  };
 
   const executeCode = () => {
     clearConsole();
     
-    // Criar um ambiente seguro para execução
     const consoleLog = (...args: any[]) => {
       setLogs(prev => [...prev, { type: 'output', content: args.join(' ') }]);
     };
@@ -29,7 +53,6 @@ export default function Console({ code, language }: ConsoleProps) {
     };
 
     try {
-      // Preparar o código para execução segura
       const preparedCode = `
         try {
           const console = {
@@ -45,7 +68,6 @@ export default function Console({ code, language }: ConsoleProps) {
         }
       `;
 
-      // Executar o código em um contexto isolado
       if (language === 'javascript' || language === 'typescript') {
         new Function(preparedCode)();
       } else {
@@ -59,7 +81,19 @@ export default function Console({ code, language }: ConsoleProps) {
     }
   };
 
-  // Auto-scroll para o último log
+  const handleInputKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      const command = input.trim();
+      if (command.startsWith('git ')) {
+        executeGitCommand(command);
+      } else {
+        setLogs(prev => [...prev, { type: 'output', content: `$ ${command}` }]);
+        setLogs(prev => [...prev, { type: 'error', content: 'Command not found' }]);
+      }
+      setInput('');
+    }
+  };
+
   useEffect(() => {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
@@ -72,6 +106,8 @@ export default function Console({ code, language }: ConsoleProps) {
         <div className="flex items-center gap-2">
           <Terminal size={18} />
           <span>Console</span>
+          <GitBranch size={18} className="ml-2" />
+          <span className="text-sm text-gray-400">Git enabled</span>
         </div>
         <div className="flex gap-2">
           <button
@@ -101,15 +137,28 @@ export default function Console({ code, language }: ConsoleProps) {
             className={`py-1 ${
               log.type === 'error' ? 'text-red-400' :
               log.type === 'info' ? 'text-blue-400' :
+              log.type === 'git' ? 'text-purple-400' :
               'text-green-400'
             }`}
           >
             {log.type === 'error' && '❌ '}
             {log.type === 'info' && 'ℹ️ '}
+            {log.type === 'git' && '🔄 '}
             {log.type === 'output' && '✅ '}
             {log.content}
           </div>
         ))}
+      </div>
+      <div className="p-2 bg-gray-800 border-t border-gray-700">
+        <input
+          ref={inputRef}
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleInputKeyPress}
+          placeholder="Digite um comando git (ex: git status)"
+          className="w-full bg-gray-900 text-white px-3 py-1 rounded border border-gray-700 focus:outline-none focus:border-blue-500"
+        />
       </div>
     </div>
   );
