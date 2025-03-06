@@ -5,14 +5,17 @@ import Chat from './components/Chat';
 import CodeEditor from './components/Editor';
 import Console from './components/Console';
 import SplashScreen from './components/SplashScreen';
+import UserSetup from './components/UserSetup';
 import Footer from './components/Footer';
 import { SUPPORTED_LANGUAGES } from './config';
+import { useLocalStorage } from './hooks/useLocalStorage';
 
 function App() {
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('javascript');
   const [showSplash, setShowSplash] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [userName, setUserName] = useLocalStorage('userName', '');
   const splitRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,15 +25,19 @@ function App() {
 
   const handleSaveCode = (newCode: string) => {
     setCode(newCode);
-    toast.success('Code updated in editor');
+    toast.success('Código atualizado no editor');
   };
 
   const handleAddToProject = (file: { name: string; content: string }) => {
-    toast.success(`File ${file.name} added to project`);
+    toast.success(`Arquivo ${file.name} adicionado ao projeto`);
   };
 
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
+  if (!userName) {
+    return <UserSetup onComplete={setUserName} />;
   }
 
   return (
@@ -39,7 +46,11 @@ function App() {
       
       <div className="flex-1 flex">
         <div className="w-1/3 border-r">
-          <Chat onSaveCode={handleSaveCode} onAddToProject={handleAddToProject} />
+          <Chat 
+            onSaveCode={handleSaveCode} 
+            onAddToProject={handleAddToProject}
+            userName={userName}
+          />
         </div>
 
         <div className="flex-1">
