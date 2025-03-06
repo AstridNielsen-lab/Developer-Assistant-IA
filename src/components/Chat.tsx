@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Save, Plus, Code2, User, Volume2, VolumeX, HelpCircle } from 'lucide-react';
+import { Send, Save, Plus, Code2, User, Volume2, VolumeX, HelpCircle, MessageSquare } from 'lucide-react';
 import { Message } from '../types';
 import { API_URL, API_KEY } from '../config';
 import HelpModal from './HelpModal';
@@ -8,6 +8,8 @@ interface ChatProps {
   onSaveCode: (code: string) => void;
   onAddToProject: (file: { name: string, content: string }) => void;
 }
+
+type ChatMode = 'conversation' | 'code';
 
 export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([{
@@ -19,6 +21,7 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
   const [speaking, setSpeaking] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [mode, setMode] = useState<ChatMode>('conversation');
 
   useEffect(() => {
     setSpeechEnabled('speechSynthesis' in window);
@@ -67,29 +70,40 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
     setLoading(true);
 
     try {
-      const response = await fetch(API_URL, {
+      const conversationHistory = messages
+        .map(msg => `${msg.role === 'user' ? 'Human' : 'Assistant'}: ${msg.content}`)
+        .join('\n');
+      
+      let fullPrompt = `${conversationHistory}\nHuman: ${input}`;
+      
+      if (mode === 'code') {
+        fullPrompt = `${fullPrompt}\n\nPor favor, forneça apenas o código com explicações mínimas. Use blocos de código markdown (\`\`\`) para o código.`;
+      }
+
+      const response = await fetch(`${API_URL}?key=${API_KEY}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           contents: [{
-            role: 'user',
             parts: [{
-              text: input
+              text: fullPrompt
             }]
           }]
         })
       });
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('API Error:', errorData);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-
+      
       if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        console.error('Invalid API response:', data);
         throw new Error('Invalid response format from API');
       }
 
@@ -100,6 +114,13 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
 
       setMessages(prev => [...prev, assistantMessage]);
       speakMessage(assistantMessage.content);
+
+      if (mode === 'code' && assistantMessage.content.includes('```')) {
+        const codeMatch = assistantMessage.content.match(/```(?:\w+)?\n([\s\S]+?)\n```/);
+        if (codeMatch) {
+          onSaveCode(codeMatch[1]);
+        }
+      }
     } catch (error) {
       console.error('Error:', error);
       const errorMessage = {
@@ -148,6 +169,32 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
               <HelpCircle className="w-6 h-6 text-gray-600" />
             </button>
           </div>
+        </div>
+        
+        {/* Mode Selection Buttons */}
+        <div className="flex gap-2 mt-4">
+          <button
+            onClick={() => setMode('conversation')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              mode === 'conversation'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <MessageSquare size={20} />
+            Conversar
+          </button>
+          <button
+            onClick={() => setMode('code')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              mode === 'code'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Code2 size={20} />
+            Gerar Código
+          </button>
         </div>
       </div>
 
@@ -221,7 +268,7 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder="Fala dev! Como posso te ajudar hoje?"
+            placeholder={mode === 'code' ? "Descreva o código que você precisa..." : "Fala dev! Como posso te ajudar hoje?"}
             className="flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <button
