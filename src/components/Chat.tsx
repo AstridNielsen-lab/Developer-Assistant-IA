@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Save, Plus, Code2, User, Volume2, VolumeX, HelpCircle, MessageSquare } from 'lucide-react';
+import { Send, Save, Plus, Code2, User, Volume2, VolumeX, HelpCircle, MessageSquare, Folder } from 'lucide-react';
 import { Message } from '../types';
 import { API_URL, API_KEY } from '../config';
 import HelpModal from './HelpModal';
+import ProjectFiles from './ProjectFiles';
 
 interface ChatProps {
   onSaveCode: (code: string) => void;
@@ -10,6 +11,11 @@ interface ChatProps {
 }
 
 type ChatMode = 'conversation' | 'code';
+
+interface ProjectFile {
+  name: string;
+  content: string;
+}
 
 export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([{
@@ -22,9 +28,17 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
   const [speechEnabled, setSpeechEnabled] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [mode, setMode] = useState<ChatMode>('conversation');
+  const [showProjectFiles, setShowProjectFiles] = useState(false);
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
 
   useEffect(() => {
     setSpeechEnabled('speechSynthesis' in window);
+    
+    // Load saved files from localStorage
+    const savedFiles = localStorage.getItem('projectFiles');
+    if (savedFiles) {
+      setProjectFiles(JSON.parse(savedFiles));
+    }
   }, []);
 
   const stopSpeaking = () => {
@@ -59,6 +73,18 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
 
     setSpeaking(true);
     window.speechSynthesis.speak(utterance);
+  };
+
+  const handleAddToProject = (file: { name: string, content: string }) => {
+    const newFiles = [...projectFiles, file];
+    setProjectFiles(newFiles);
+    localStorage.setItem('projectFiles', JSON.stringify(newFiles));
+    onAddToProject(file);
+  };
+
+  const handleFileClick = (file: ProjectFile) => {
+    onSaveCode(file.content);
+    setShowProjectFiles(false);
   };
 
   const sendMessage = async () => {
@@ -162,6 +188,13 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
               </button>
             )}
             <button
+              onClick={() => setShowProjectFiles(true)}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              title="Abrir Projeto"
+            >
+              <Folder className="w-6 h-6 text-gray-600" />
+            </button>
+            <button
               onClick={() => setIsHelpOpen(true)}
               className="p-2 rounded-full hover:bg-gray-100 transition-colors"
               title="Ajuda"
@@ -232,10 +265,15 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
                     <Save size={16} /> Salvar Código
                   </button>
                   <button
-                    onClick={() => onAddToProject({
-                      name: 'new-file.txt',
-                      content: message.content
-                    })}
+                    onClick={() => {
+                      const fileName = prompt('Nome do arquivo:', 'novo-arquivo.js');
+                      if (fileName) {
+                        handleAddToProject({
+                          name: fileName,
+                          content: message.content
+                        });
+                      }
+                    }}
                     className="p-2 text-sm bg-blue-500 text-white rounded-md flex items-center gap-1 hover:bg-blue-600 transition-colors"
                   >
                     <Plus size={16} /> Adicionar ao Projeto
@@ -280,6 +318,23 @@ export default function Chat({ onSaveCode, onAddToProject }: ChatProps) {
           </button>
         </div>
       </div>
+
+      {showProjectFiles && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="relative">
+            <button
+              onClick={() => setShowProjectFiles(false)}
+              className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+            <ProjectFiles
+              files={projectFiles}
+              onFileClick={handleFileClick}
+            />
+          </div>
+        </div>
+      )}
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
