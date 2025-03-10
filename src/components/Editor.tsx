@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import { AlertCircle, Wand2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { API_URL, API_KEY } from '../config';
 
 interface CodeEditorProps {
   code: string;
@@ -10,136 +13,184 @@ interface CodeEditorProps {
 function CodeEditor({ code, language, onChange }: CodeEditorProps) {
   const [editor, setEditor] = useState<any>(null);
   const [monaco, setMonaco] = useState<any>(null);
+  const [isFixing, setIsFixing] = useState(false);
+
+  const fixCodeWithGemini = async (errorMessage: string, codeToFix: string): Promise<string | null> => {
+    try {
+      const prompt = `Fix the following code error. Only respond with the corrected code, no explanations:
+Error: ${errorMessage}
+
+Code:
+${codeToFix}`;
+
+      const response = await fetch(`${API_URL}?key=${API_KEY}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get fix suggestion');
+      }
+
+      const data = await response.json();
+      const fixedCode = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      // Remove any markdown code blocks if present
+      return fixedCode?.replace(/```[\w]*\n?|\n```/g, '').trim() || null;
+    } catch (error) {
+      console.error('Error getting fix:', error);
+      return null;
+    }
+  };
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     setEditor(editor);
     setMonaco(monaco);
 
-    // Configurar auto-complete e snippets
-    monaco.languages.registerCompletionItemProvider(language, {
-      provideCompletionItems: (model: any, position: any) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn
-        };
-
-        const suggestions = [
-          {
-            label: 'console.log',
-            kind: monaco.languages.CompletionItemKind.Function,
-            insertText: 'console.log(${1:value});',
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Log to console',
-            range: range
-          },
-          {
-            label: 'function',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: [
-              'function ${1:name}(${2:params}) {',
-              '\t${3}',
-              '}'
-            ].join('\n'),
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Function declaration',
-            range: range
-          },
-          {
-            label: 'if',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: [
-              'if (${1:condition}) {',
-              '\t${2}',
-              '}'
-            ].join('\n'),
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'If statement',
-            range: range
-          },
-          {
-            label: 'try',
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            insertText: [
-              'try {',
-              '\t${1}',
-              '} catch (error) {',
-              '\t${2}',
-              '}'
-            ].join('\n'),
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            documentation: 'Try-catch block',
-            range: range
-          }
-        ];
-
-        // Adicionar sugestões específicas para cada linguagem
-        if (language === 'javascript' || language === 'typescript') {
-          suggestions.push(
-            {
-              label: 'async',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: [
-                'async function ${1:name}(${2:params}) {',
-                '\t${3}',
-                '}'
-              ].join('\n'),
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              documentation: 'Async function declaration',
-              range: range
-            },
-            {
-              label: 'promise',
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: [
-                'return new Promise((resolve, reject) => {',
-                '\t${1}',
-                '});'
-              ].join('\n'),
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              documentation: 'Create new Promise',
-              range: range
-            }
-          );
-        }
-
-        return { suggestions };
-      }
-    });
-
-    // Configurar hover provider
+    // Add custom hover provider for errors
     monaco.languages.registerHoverProvider(language, {
-      provideHover: (model: any, position: any) => {
-        const word = model.getWordAtPosition(position);
-        if (!word) return;
+      provideHover: async (model: any, position: any) => {
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+        const lineNumber = position.lineNumber;
+        const column = position.column;
+        
+        // Find if there's an error at the current position
+        const errorAtPosition = markers.find((marker: any) => {
+          return marker.severity === monaco.MarkerSeverity.Error &&
+                 marker.startLineNumber <= lineNumber &&
+                 marker.endLineNumber >= lineNumber &&
+                 marker.startColumn <= column &&
+                 marker.endColumn >= column;
+        });
 
-        const documentation = getDocumentation(word.word);
-        if (documentation) {
+        if (errorAtPosition) {
+          const errorRange = new monaco.Range(
+            errorAtPosition.startLineNumber,
+            errorAtPosition.startColumn,
+            errorAtPosition.endLineNumber,
+            errorAtPosition.endColumn
+          );
+
+          const codeAtError = model.getValueInRange(errorRange);
+
           return {
+            range: errorRange,
             contents: [
-              { value: '**' + word.word + '**' },
-              { value: documentation }
+              { value: '**Error:** ' + errorAtPosition.message },
+              {
+                value: `[Fix with Gemini AI](command:fixError)`,
+                isTrusted: true
+              }
             ]
           };
         }
       }
     });
+
+    // Add custom command for fixing errors
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period, async () => {
+      const position = editor.getPosition();
+      const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+      const errorAtPosition = markers.find((marker: any) => {
+        return marker.severity === monaco.MarkerSeverity.Error &&
+               marker.startLineNumber === position.lineNumber;
+      });
+
+      if (errorAtPosition) {
+        await handleErrorFix(errorAtPosition);
+      }
+    });
+
+    // Add context menu action
+    editor.addAction({
+      id: 'fix-error-gemini',
+      label: 'Fix with Gemini AI',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.5,
+      run: async (ed: any) => {
+        const position = ed.getPosition();
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+        const errorAtPosition = markers.find((marker: any) => {
+          return marker.severity === monaco.MarkerSeverity.Error &&
+                 marker.startLineNumber === position.lineNumber;
+        });
+
+        if (errorAtPosition) {
+          await handleErrorFix(errorAtPosition);
+        }
+      }
+    });
   };
 
-  const getDocumentation = (word: string): string | null => {
-    const docs: Record<string, string> = {
-      'console.log': 'Outputs a message to the web console',
-      'function': 'Declares a function with the specified parameters',
-      'if': 'Executes a statement if a specified condition is truthy',
-      'try': 'Marks a block of statements to try and specifies a response should an exception be thrown',
-      'async': 'Declares an async function that returns a Promise',
-      'Promise': 'Represents the eventual completion (or failure) of an asynchronous operation'
-    };
+  const handleErrorFix = async (error: any) => {
+    if (isFixing) return;
+    
+    setIsFixing(true);
+    const loadingToast = toast.loading('Analyzing code and generating fix...');
 
-    return docs[word] || null;
+    try {
+      const model = editor.getModel();
+      const errorRange = new monaco.Range(
+        error.startLineNumber,
+        error.startColumn,
+        error.endLineNumber,
+        error.endColumn
+      );
+      
+      const codeAtError = model.getValueInRange(errorRange);
+      const fixedCode = await fixCodeWithGemini(error.message, codeAtError);
+
+      if (fixedCode) {
+        // Create edit operation
+        const edit = {
+          range: errorRange,
+          text: fixedCode,
+          forceMoveMarkers: true
+        };
+
+        // Apply the edit
+        editor.executeEdits('fix-error', [edit]);
+        toast.success('Code fixed successfully!', { id: loadingToast });
+      } else {
+        toast.error('Could not generate a fix', { id: loadingToast });
+      }
+    } catch (error) {
+      console.error('Error fixing code:', error);
+      toast.error('Failed to fix code', { id: loadingToast });
+    } finally {
+      setIsFixing(false);
+    }
   };
+
+  // Add custom decorations for error markers
+  useEffect(() => {
+    if (editor && monaco) {
+      const decorations = editor.getModel().getAllDecorations();
+      const errorDecorations = decorations.filter((d: any) => 
+        d.options.className === 'squiggly-error'
+      );
+
+      const newDecorations = errorDecorations.map((d: any) => ({
+        range: d.range,
+        options: {
+          ...d.options,
+          glyphMarginClassName: 'error-glyph',
+          glyphMarginHoverMessage: { value: 'Click to fix with Gemini AI' }
+        }
+      }));
+
+      editor.getModel().deltaDecorations([], newDecorations);
+    }
+  }, [editor, monaco, code]);
 
   return (
     <div className="relative h-full">
@@ -183,10 +234,22 @@ function CodeEditor({ code, language, onChange }: CodeEditorProps) {
           inlineSuggest: {
             enabled: true
           },
+          glyphMargin: true,
+          lightbulb: {
+            enabled: true
+          },
           acceptSuggestionOnCommitCharacter: true,
           acceptSuggestionOnEnter: 'on'
         }}
       />
+      {isFixing && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-4 flex items-center gap-2">
+            <Wand2 className="w-5 h-5 text-blue-500 animate-spin" />
+            <span>Fixing code with Gemini AI...</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

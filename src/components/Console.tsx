@@ -15,13 +15,14 @@ interface Log {
   timestamp: number;
 }
 
-export default function Console({ code, language }: ConsoleProps) {
+function Console({ code, language }: ConsoleProps) {
   const [logs, setLogs] = useState<Log[]>([]);
   const [input, setInput] = useState('');
   const [activeTab, setActiveTab] = useState<'console' | 'terminal'>('console');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [hasErrors, setHasErrors] = useState(false);
   
   const consoleRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -32,9 +33,16 @@ export default function Console({ code, language }: ConsoleProps) {
       content,
       timestamp: Date.now()
     }]);
+
+    if (type === 'error') {
+      setHasErrors(true);
+    }
   };
 
-  const clearConsole = () => setLogs([]);
+  const clearConsole = () => {
+    setLogs([]);
+    setHasErrors(false);
+  };
 
   const executeGitCommand = (command: string) => {
     const gitCommands: Record<string, string> = {
@@ -142,6 +150,26 @@ export default function Console({ code, language }: ConsoleProps) {
       `);
 
       executor(sandbox);
+
+      // Only show preview if there are no errors
+      if (!hasErrors) {
+        const previewContainer = document.createElement('div');
+        previewContainer.innerHTML = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <style>
+                body { margin: 0; padding: 16px; }
+              </style>
+            </head>
+            <body>
+              <script>${code}</script>
+            </body>
+          </html>
+        `;
+        
+        addLog('Preview generated successfully', 'info');
+      }
     } catch (error) {
       consoleError(error instanceof Error ? error.message : 'An error occurred');
     }
@@ -294,3 +322,5 @@ export default function Console({ code, language }: ConsoleProps) {
     </div>
   );
 }
+
+export default Console;
