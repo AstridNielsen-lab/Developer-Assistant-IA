@@ -26,6 +26,8 @@ function Console({ code, language }: ConsoleProps) {
   
   const consoleRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout>();
 
   const addLog = (content: string, type: LogType) => {
     setLogs(prev => [...prev, {
@@ -127,7 +129,6 @@ function Console({ code, language }: ConsoleProps) {
     };
 
     try {
-      // Create a sandboxed environment for code execution
       const sandbox = {
         console: {
           log: consoleLog,
@@ -138,7 +139,6 @@ function Console({ code, language }: ConsoleProps) {
         }
       };
 
-      // Use Function constructor to create a new scope
       const executor = new Function('sandbox', `
         with (sandbox) {
           try {
@@ -151,31 +151,26 @@ function Console({ code, language }: ConsoleProps) {
 
       executor(sandbox);
 
-      // Only show preview if there are no errors
       if (!hasErrors) {
-        const previewContainer = document.createElement('div');
-        previewContainer.innerHTML = `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <style>
-                body { margin: 0; padding: 16px; }
-              </style>
-            </head>
-            <body>
-              <script>${code}</script>
-            </body>
-          </html>
-        `;
-        
-        addLog('Preview generated successfully', 'info');
+        addLog('Code executed successfully', 'info');
       }
     } catch (error) {
       consoleError(error instanceof Error ? error.message : 'An error occurred');
     }
   };
 
-  // Listen for execute-code events
+  const handleScroll = () => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (consoleRef.current) {
+        consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+      }
+    }, 50);
+  };
+
   useEffect(() => {
     const handleExecuteCode = (event: CustomEvent) => {
       if (event.detail?.code) {
@@ -188,6 +183,40 @@ function Console({ code, language }: ConsoleProps) {
       window.removeEventListener('execute-code', handleExecuteCode as EventListener);
     };
   }, [code]);
+
+  useEffect(() => {
+    if (consoleRef.current) {
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
+
+      resizeObserverRef.current = new ResizeObserver(() => {
+        requestAnimationFrame(handleScroll);
+      });
+
+      resizeObserverRef.current.observe(consoleRef.current);
+
+      return () => {
+        if (resizeObserverRef.current) {
+          resizeObserverRef.current.disconnect();
+        }
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    handleScroll();
+  }, [logs]);
+
+  useEffect(() => {
+    if (activeTab === 'terminal') {
+      addLog('Terminal v1.0.0', 'info');
+      addLog('Type "help" for available commands', 'info');
+    }
+  }, [activeTab]);
 
   const handleInputKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && input.trim()) {
@@ -213,27 +242,6 @@ function Console({ code, language }: ConsoleProps) {
       }
     }
   };
-
-  // Handle console scrolling
-  useEffect(() => {
-    if (consoleRef.current) {
-      const observer = new ResizeObserver(() => {
-        if (consoleRef.current) {
-          consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
-        }
-      });
-
-      observer.observe(consoleRef.current);
-      return () => observer.disconnect();
-    }
-  }, [logs]);
-
-  useEffect(() => {
-    if (activeTab === 'terminal') {
-      addLog('Terminal v1.0.0', 'info');
-      addLog('Type "help" for available commands', 'info');
-    }
-  }, [activeTab]);
 
   return (
     <div className={`h-full bg-gray-900 text-white flex flex-col ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>

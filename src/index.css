@@ -1,3 +1,51 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Split.js styles */
+.gutter {
+  background-color: #2d3748;
+  background-repeat: no-repeat;
+  background-position: 50%;
+}
+
+.gutter:hover {
+  background-color: #4a5568;
+}
+
+.gutter.gutter-horizontal {
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==');
+  cursor: col-resize;
+}
+
+.gutter.gutter-vertical {
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAFAQMAAABo7865AAAABlBMVEVHcEzMzMzyAv2sAAAAAXRSTlMAQObYZgAAABBJREFUeF5jOAMEEAIEEFwAn3kMwcB6I2AAAAAASUVORK5CYII=');
+  cursor: row-resize;
+}
+
+/* Ensure the split containers take full height */
+.split {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+}
+
+.split.vertical {
+  flex-direction: column;
+}
+
+/* Ensure content doesn't overflow split panels */
+.split > * {
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Prevent text selection during resize */
+.gutter-dragging * {
+  user-select: none;
+}
+
+/* Ensure proper z-index for fullscreen console */
+.fixed {
+  z-index: 9999;
+}

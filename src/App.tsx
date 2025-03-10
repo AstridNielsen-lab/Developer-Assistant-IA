@@ -47,7 +47,6 @@ function App() {
   const generateProjectStructure = () => {
     const structure = DEFAULT_PROJECT_STRUCTURE[language];
     
-    // Create default content for main files based on language
     const getDefaultContent = (fileName: string) => {
       switch (language) {
         case 'javascript':
@@ -156,72 +155,89 @@ function App() {
     <div className="h-screen flex flex-col">
       <Toaster position="top-right" />
       
-      <div className="flex-1 flex">
-        <div className="w-1/3 border-r">
-          <Chat 
-            onSaveCode={handleSaveCode} 
-            onAddToProject={handleAddToProject}
-            userName={userName}
-          />
-        </div>
-
-        <div className="flex-1 flex flex-col">
-          <div className="h-12 bg-gray-800 flex items-center px-4 gap-4">
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="bg-gray-700 text-white px-3 py-1 rounded"
-            >
-              {SUPPORTED_LANGUAGES.map(lang => (
-                <option key={lang} value={lang}>
-                  {lang.charAt(0).toUpperCase() + lang.slice(1)}
-                </option>
-              ))}
-            </select>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setActiveTab('code')}
-                className={`flex items-center gap-1 px-3 py-1 rounded ${
-                  activeTab === 'code' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                <Code2 size={16} />
-                <span>Código</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('preview')}
-                className={`flex items-center gap-1 px-3 py-1 rounded ${
-                  activeTab === 'preview' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                <Eye size={16} />
-                <span>Preview</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('files')}
-                className={`flex items-center gap-1 px-3 py-1 rounded ${
-                  activeTab === 'files' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                <Files size={16} />
-                <span>Arquivos</span>
-              </button>
-            </div>
+      {mounted && (
+        <Split
+          className="flex-1 flex"
+          sizes={[30, 70]}
+          minSize={[200, 400]}
+          expandToMin={false}
+          gutterSize={8}
+          gutterAlign="center"
+          snapOffset={30}
+          dragInterval={1}
+          direction="horizontal"
+          cursor="col-resize"
+        >
+          <div className="h-full">
+            <Chat 
+              onSaveCode={handleSaveCode} 
+              onAddToProject={handleAddToProject}
+              userName={userName}
+            />
           </div>
 
-          <div className="flex-1 flex">
-            <div className="w-3/4 flex flex-col">
-              {mounted && (
+          <div className="flex-1 flex flex-col">
+            <div className="h-12 bg-gray-800 flex items-center px-4 gap-4">
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="bg-gray-700 text-white px-3 py-1 rounded"
+              >
+                {SUPPORTED_LANGUAGES.map(lang => (
+                  <option key={lang} value={lang}>
+                    {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setActiveTab('code')}
+                  className={`flex items-center gap-1 px-3 py-1 rounded ${
+                    activeTab === 'code' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  <Code2 size={16} />
+                  <span>Código</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('preview')}
+                  className={`flex items-center gap-1 px-3 py-1 rounded ${
+                    activeTab === 'preview' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  <Eye size={16} />
+                  <span>Preview</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('files')}
+                  className={`flex items-center gap-1 px-3 py-1 rounded ${
+                    activeTab === 'files' ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  <Files size={16} />
+                  <span>Arquivos</span>
+                </button>
+              </div>
+            </div>
+
+            <Split
+              className="flex-1 flex"
+              direction="horizontal"
+              sizes={[70, 30]}
+              minSize={[400, 200]}
+              gutterSize={8}
+              snapOffset={30}
+              dragInterval={1}
+            >
+              <div className="h-full flex flex-col">
                 <Split
-                  ref={splitRef}
                   direction="vertical"
                   sizes={[70, 30]}
-                  minSize={100}
+                  minSize={[200, 100]}
                   gutterSize={8}
-                  className="h-full flex flex-col"
-                  style={{ height: '100%' }}
                   snapOffset={30}
                   dragInterval={1}
+                  className="h-full"
                 >
                   <div className="overflow-hidden flex flex-col">
                     {activeTab === 'code' && (
@@ -263,14 +279,14 @@ function App() {
                     <Console code={code} language={language} />
                   </div>
                 </Split>
-              )}
-            </div>
-            <div className="w-1/4 border-l border-gray-700 bg-gray-900">
-              {renderProjectStructure()}
-            </div>
+              </div>
+              <div className="border-l border-gray-700 bg-gray-900">
+                {renderProjectStructure()}
+              </div>
+            </Split>
           </div>
-        </div>
-      </div>
+        </Split>
+      )}
       
       <Footer />
     </div>
