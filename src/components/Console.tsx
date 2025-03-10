@@ -1,21 +1,42 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Trash2, Play, GitBranch } from 'lucide-react';
+import { Terminal as TerminalIcon, Trash2, Play, GitBranch, Terminal as TerminalTab, Maximize2 } from 'lucide-react';
 
 interface ConsoleProps {
   code: string;
   language: string;
 }
 
+type LogType = 'output' | 'error' | 'info' | 'git' | 'command';
+
+interface Log {
+  type: LogType;
+  content: string;
+  timestamp: number;
+}
+
 export default function Console({ code, language }: ConsoleProps) {
-  const [logs, setLogs] = useState<Array<{ type: 'output' | 'error' | 'info' | 'git'; content: string }>>([]);
+  const [logs, setLogs] = useState<Log[]>([]);
   const [input, setInput] = useState('');
+  const [activeTab, setActiveTab] = useState<'console' | 'terminal'>('console');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  
   const consoleRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const addLog = (content: string, type: LogType) => {
+    setLogs(prev => [...prev, {
+      type,
+      content,
+      timestamp: Date.now()
+    }]);
+  };
+
   const clearConsole = () => setLogs([]);
 
-  const executeGitCommand = async (command: string) => {
-    const gitCommands = {
+  const executeGitCommand = (command: string) => {
+    const gitCommands: Record<string, string> = {
       'git init': 'Initialized empty Git repository',
       'git status': 'On branch main\nNothing to commit, working tree clean',
       'git add': 'Added files to staging area',
@@ -29,11 +50,41 @@ export default function Console({ code, language }: ConsoleProps) {
     };
 
     const matchedCommand = Object.keys(gitCommands).find(cmd => command.startsWith(cmd));
+    
+    addLog(`$ ${command}`, 'command');
     if (matchedCommand) {
-      setLogs(prev => [...prev, { type: 'git', content: `$ ${command}` }]);
-      setLogs(prev => [...prev, { type: 'output', content: gitCommands[matchedCommand] }]);
+      addLog(gitCommands[matchedCommand], 'git');
     } else {
-      setLogs(prev => [...prev, { type: 'error', content: 'Git command not recognized' }]);
+      addLog('Git command not recognized', 'error');
+    }
+  };
+
+  const executeTerminalCommand = (command: string) => {
+    const commands: Record<string, (args: string[]) => string> = {
+      help: () => 'Available commands:\n  help - Show this help message\n  clear - Clear terminal\n  echo [text] - Print text\n  ls - List files\n  pwd - Print working directory',
+      clear: () => {
+        clearConsole();
+        return '';
+      },
+      echo: (args) => args.join(' '),
+      ls: () => 'src/\npackage.json\nREADME.md',
+      pwd: () => '/home/project'
+    };
+
+    const args = command.split(' ');
+    const cmd = args[0];
+
+    addLog(`$ ${command}`, 'command');
+    
+    if (cmd in commands) {
+      const output = commands[cmd](args.slice(1));
+      if (output) {
+        addLog(output, 'output');
+      }
+    } else if (cmd.startsWith('git')) {
+      executeGitCommand(command);
+    } else {
+      addLog(`Command not found: ${cmd}`, 'error');
     }
   };
 
@@ -41,56 +92,66 @@ export default function Console({ code, language }: ConsoleProps) {
     clearConsole();
     
     const consoleLog = (...args: any[]) => {
-      setLogs(prev => [...prev, { type: 'output', content: args.join(' ') }]);
+      addLog(args.join(' '), 'output');
     };
 
     const consoleError = (...args: any[]) => {
-      setLogs(prev => [...prev, { type: 'error', content: args.join(' ') }]);
+      addLog(args.join(' '), 'error');
     };
 
     const consoleInfo = (...args: any[]) => {
-      setLogs(prev => [...prev, { type: 'info', content: args.join(' ') }]);
+      addLog(args.join(' '), 'info');
     };
 
     try {
-      const preparedCode = `
+      // Create a safe environment for code execution
+      const safeEval = new Function(
+        'console',
+        `
+        "use strict";
         try {
-          const console = {
-            log: ${consoleLog.toString()},
-            error: ${consoleError.toString()},
-            info: ${consoleInfo.toString()},
-            warn: ${consoleLog.toString()},
-            debug: ${consoleLog.toString()}
-          };
           ${code}
         } catch (error) {
           console.error(error.message);
         }
-      `;
+        `
+      );
 
-      if (language === 'javascript' || language === 'typescript') {
-        new Function(preparedCode)();
-      } else {
-        setLogs(prev => [...prev, { 
-          type: 'info', 
-          content: `Execução de código ${language} não suportada no navegador. Use JavaScript/TypeScript para execução em tempo real.` 
-        }]);
-      }
+      safeEval({
+        log: consoleLog,
+        error: consoleError,
+        info: consoleInfo,
+        warn: consoleLog,
+        debug: consoleLog
+      });
     } catch (error) {
-      setLogs(prev => [...prev, { type: 'error', content: error.message }]);
+      addLog(error instanceof Error ? error.message : 'An error occurred', 'error');
     }
   };
 
-  const handleInputKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const handleInputKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && input.trim()) {
       const command = input.trim();
-      if (command.startsWith('git ')) {
-        executeGitCommand(command);
-      } else {
-        setLogs(prev => [...prev, { type: 'output', content: `$ ${command}` }]);
-        setLogs(prev => [...prev, { type: 'error', content: 'Command not found' }]);
-      }
+      executeTerminalCommand(command);
+      
+      // Update command history
+      setCommandHistory(prev => [command, ...prev].slice(0, 50));
+      setHistoryIndex(-1);
       setInput('');
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (historyIndex < commandHistory.length - 1) {
+        const newIndex = historyIndex + 1;
+        setHistoryIndex(newIndex);
+        setInput(commandHistory[newIndex]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex > -1) {
+        const newIndex = historyIndex - 1;
+        setHistoryIndex(newIndex);
+        setInput(newIndex === -1 ? '' : commandHistory[newIndex]);
+      }
     }
   };
 
@@ -100,44 +161,84 @@ export default function Console({ code, language }: ConsoleProps) {
     }
   }, [logs]);
 
+  useEffect(() => {
+    if (activeTab === 'terminal') {
+      addLog('Terminal v1.0.0', 'info');
+      addLog('Type "help" for available commands', 'info');
+    }
+  }, [activeTab]);
+
   return (
-    <div className="h-full bg-gray-900 text-white flex flex-col">
+    <div className={`h-full bg-gray-900 text-white flex flex-col ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
       <div className="flex justify-between items-center p-2 bg-gray-800">
-        <div className="flex items-center gap-2">
-          <Terminal size={18} />
-          <span>Console</span>
-          <GitBranch size={18} className="ml-2" />
-          <span className="text-sm text-gray-400">Git enabled</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('console')}
+              className={`flex items-center gap-1 px-3 py-1 rounded ${
+                activeTab === 'console' ? 'bg-gray-700' : 'hover:bg-gray-700'
+              }`}
+            >
+              <TerminalIcon size={16} />
+              <span>Console</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('terminal')}
+              className={`flex items-center gap-1 px-3 py-1 rounded ${
+                activeTab === 'terminal' ? 'bg-gray-700' : 'hover:bg-gray-700'
+              }`}
+            >
+              <TerminalTab size={16} />
+              <span>Terminal</span>
+            </button>
+          </div>
+          {activeTab === 'console' && (
+            <>
+              <GitBranch size={18} />
+              <span className="text-sm text-gray-400">Git enabled</span>
+            </>
+          )}
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={executeCode}
-            className="p-1 hover:bg-gray-600 rounded flex items-center gap-1 text-green-400"
-            title="Executar código"
-          >
-            <Play size={18} />
-            <span className="text-sm">Executar</span>
-          </button>
+          {activeTab === 'console' && (
+            <button
+              onClick={executeCode}
+              className="p-1 hover:bg-gray-600 rounded flex items-center gap-1 text-green-400"
+              title="Executar código"
+            >
+              <Play size={18} />
+              <span className="text-sm">Executar</span>
+            </button>
+          )}
           <button
             onClick={clearConsole}
             className="p-1 hover:bg-gray-600 rounded"
-            title="Limpar console"
+            title="Limpar"
           >
             <Trash2 size={18} />
           </button>
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-1 hover:bg-gray-600 rounded"
+            title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+          >
+            <Maximize2 size={18} />
+          </button>
         </div>
       </div>
+
       <div 
         ref={consoleRef}
-        className="flex-1 overflow-y-auto p-4 font-mono text-sm space-y-1"
+        className="flex-1 overflow-y-auto p-4 font-mono text-sm space-y-1 bg-gray-900"
       >
         {logs.map((log, index) => (
           <div
-            key={index}
-            className={`py-1 ${
+            key={`${log.timestamp}-${index}`}
+            className={`py-1 whitespace-pre-wrap ${
               log.type === 'error' ? 'text-red-400' :
               log.type === 'info' ? 'text-blue-400' :
               log.type === 'git' ? 'text-purple-400' :
+              log.type === 'command' ? 'text-gray-400' :
               'text-green-400'
             }`}
           >
@@ -149,16 +250,21 @@ export default function Console({ code, language }: ConsoleProps) {
           </div>
         ))}
       </div>
+
       <div className="p-2 bg-gray-800 border-t border-gray-700">
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleInputKeyPress}
-          placeholder="Digite um comando git (ex: git status)"
-          className="w-full bg-gray-900 text-white px-3 py-1 rounded border border-gray-700 focus:outline-none focus:border-blue-500"
-        />
+        <div className="flex items-center gap-2">
+          <span className="text-green-400">$</span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleInputKeyPress}
+            placeholder={activeTab === 'terminal' ? "Digite um comando (ex: help)" : "Digite um comando git (ex: git status)"}
+            className="flex-1 bg-gray-900 text-white px-3 py-1 rounded border border-gray-700 focus:outline-none focus:border-blue-500"
+            autoFocus
+          />
+        </div>
       </div>
     </div>
   );
