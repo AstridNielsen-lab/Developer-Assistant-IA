@@ -28,6 +28,7 @@ function Console({ code, language }: ConsoleProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout>();
+  const isScrollingRef = useRef(false);
 
   const addLog = (content: string, type: LogType) => {
     setLogs(prev => [...prev, {
@@ -160,6 +161,10 @@ function Console({ code, language }: ConsoleProps) {
   };
 
   const handleScroll = () => {
+    if (isScrollingRef.current) return;
+    
+    isScrollingRef.current = true;
+    
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
@@ -168,7 +173,8 @@ function Console({ code, language }: ConsoleProps) {
       if (consoleRef.current) {
         consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
       }
-    }, 50);
+      isScrollingRef.current = false;
+    }, 100);
   };
 
   useEffect(() => {
@@ -190,8 +196,17 @@ function Console({ code, language }: ConsoleProps) {
         resizeObserverRef.current.disconnect();
       }
 
-      resizeObserverRef.current = new ResizeObserver(() => {
-        requestAnimationFrame(handleScroll);
+      const debouncedResize = () => {
+        if (!isScrollingRef.current) {
+          requestAnimationFrame(handleScroll);
+        }
+      };
+
+      resizeObserverRef.current = new ResizeObserver((entries) => {
+        // Only process the first entry
+        if (entries.length > 0) {
+          debouncedResize();
+        }
       });
 
       resizeObserverRef.current.observe(consoleRef.current);
@@ -208,7 +223,9 @@ function Console({ code, language }: ConsoleProps) {
   }, []);
 
   useEffect(() => {
-    handleScroll();
+    if (!isScrollingRef.current) {
+      handleScroll();
+    }
   }, [logs]);
 
   useEffect(() => {
