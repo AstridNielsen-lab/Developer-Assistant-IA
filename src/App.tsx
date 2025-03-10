@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Split from 'react-split';
 import { Toaster, toast } from 'react-hot-toast';
-import { Code2, Eye, FolderTree, Files } from 'lucide-react';
+import { Code2, Eye, FolderTree, Files, Link } from 'lucide-react';
 import Chat from './components/Chat';
 import CodeEditor from './components/Editor';
 import Console from './components/Console';
@@ -11,6 +11,15 @@ import Footer from './components/Footer';
 import { SUPPORTED_LANGUAGES, DEFAULT_PROJECT_STRUCTURE } from './config';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
+interface ProjectStructure {
+  language: string;
+  files: Array<{
+    name: string;
+    content: string;
+    path: string;
+  }>;
+}
+
 function App() {
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('javascript');
@@ -18,6 +27,7 @@ function App() {
   const [mounted, setMounted] = useState(false);
   const [userName, setUserName] = useLocalStorage('userName', '');
   const [activeTab, setActiveTab] = useState<'code' | 'preview' | 'files'>('code');
+  const [projectStructures, setProjectStructures] = useLocalStorage<ProjectStructure[]>('projectStructures', []);
   const splitRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,13 +44,76 @@ function App() {
     toast.success(`Arquivo ${file.name} adicionado ao projeto`);
   };
 
+  const generateProjectStructure = () => {
+    const structure = DEFAULT_PROJECT_STRUCTURE[language];
+    
+    // Create default content for main files based on language
+    const getDefaultContent = (fileName: string) => {
+      switch (language) {
+        case 'javascript':
+          return fileName === 'package.json' ? 
+            JSON.stringify({
+              name: "project",
+              version: "1.0.0",
+              type: "module",
+              scripts: {
+                "start": "node src/index.js"
+              }
+            }, null, 2) : 
+            '// Add your code here\n';
+        case 'typescript':
+          return fileName === 'tsconfig.json' ? 
+            JSON.stringify({
+              compilerOptions: {
+                target: "ES2020",
+                module: "ESNext",
+                strict: true,
+                esModuleInterop: true,
+                skipLibCheck: true,
+                forceConsistentCasingInFileNames: true
+              }
+            }, null, 2) : 
+            '// Add your TypeScript code here\n';
+        case 'python':
+          return fileName === 'requirements.txt' ? 
+            '# Add your dependencies here\n' : 
+            '# Add your Python code here\n';
+        default:
+          return '// Add your code here\n';
+      }
+    };
+
+    const files = structure.map(path => ({
+      name: path.split('/').pop() || path,
+      path,
+      content: getDefaultContent(path)
+    }));
+
+    const newStructure: ProjectStructure = {
+      language,
+      files
+    };
+
+    setProjectStructures(prev => [...prev, newStructure]);
+    toast.success(`Estrutura do projeto ${language} gerada com sucesso!`);
+  };
+
   const renderProjectStructure = () => {
     const structure = DEFAULT_PROJECT_STRUCTURE[language];
     return (
       <div className="p-4 bg-gray-800 text-white">
-        <div className="flex items-center gap-2 mb-4">
-          <FolderTree className="w-5 h-5" />
-          <h3 className="font-medium">Estrutura do Projeto</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <FolderTree className="w-5 h-5" />
+            <h3 className="font-medium">Estrutura do Projeto</h3>
+          </div>
+          <button
+            onClick={generateProjectStructure}
+            className="flex items-center gap-2 px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors text-sm"
+          >
+            <Link className="w-4 h-4" />
+            Gerar Vínculos
+          </button>
         </div>
         <div className="space-y-1 font-mono text-sm">
           {structure.map((path, index) => (
@@ -54,6 +127,19 @@ function App() {
             </div>
           ))}
         </div>
+        
+        {projectStructures.length > 0 && (
+          <div className="mt-6 border-t border-gray-700 pt-4">
+            <h4 className="text-sm font-medium mb-2">Projetos Salvos:</h4>
+            <div className="space-y-2">
+              {projectStructures.map((project, index) => (
+                <div key={index} className="text-sm text-gray-300">
+                  <span className="text-blue-400">{project.language}</span> - {project.files.length} arquivos
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
