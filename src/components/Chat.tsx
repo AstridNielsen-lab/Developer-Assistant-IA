@@ -203,10 +203,21 @@ export default function Chat({ onSaveCode, onAddToProject, userName }: ChatProps
       saveConversation();
       speakMessage(assistantMessage.content);
 
+      // Extract and execute code if present
       if (mode === 'code' && assistantMessage.content.includes('```')) {
         const codeMatch = assistantMessage.content.match(/```(?:\w+)?\n([\s\S]+?)\n```/);
         if (codeMatch) {
-          onSaveCode(codeMatch[1]);
+          const extractedCode = codeMatch[1];
+          onSaveCode(extractedCode);
+          toast.success('Código gerado e copiado para o editor!');
+          
+          // Automatically trigger code execution after a short delay
+          setTimeout(() => {
+            const executeEvent = new CustomEvent('execute-code', { 
+              detail: { code: extractedCode } 
+            });
+            window.dispatchEvent(executeEvent);
+          }, 500);
         }
       }
     } catch (error) {
@@ -347,6 +358,12 @@ export default function Chat({ onSaveCode, onAddToProject, userName }: ChatProps
                       if (codeMatch) {
                         onSaveCode(codeMatch[1]);
                         toast.success('Código copiado para o editor!');
+                        
+                        // Trigger code execution
+                        const executeEvent = new CustomEvent('execute-code', { 
+                          detail: { code: codeMatch[1] } 
+                        });
+                        window.dispatchEvent(executeEvent);
                       }
                     }}
                     className="p-2 text-sm bg-green-500 text-white rounded-md flex items-center gap-1 hover:bg-green-600 transition-colors"
@@ -434,6 +451,12 @@ export default function Chat({ onSaveCode, onAddToProject, userName }: ChatProps
                 onSaveCode(file.content);
                 setShowProjectFiles(false);
                 toast.success(`Arquivo ${file.name} carregado no editor!`);
+                
+                // Trigger code execution
+                const executeEvent = new CustomEvent('execute-code', { 
+                  detail: { code: file.content } 
+                });
+                window.dispatchEvent(executeEvent);
               }}
             />
           </div>

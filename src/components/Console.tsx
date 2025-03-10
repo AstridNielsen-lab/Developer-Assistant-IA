@@ -175,6 +175,20 @@ function Console({ code, language }: ConsoleProps) {
     }
   };
 
+  // Listen for execute-code events
+  useEffect(() => {
+    const handleExecuteCode = (event: CustomEvent) => {
+      if (event.detail?.code) {
+        executeCode();
+      }
+    };
+
+    window.addEventListener('execute-code', handleExecuteCode as EventListener);
+    return () => {
+      window.removeEventListener('execute-code', handleExecuteCode as EventListener);
+    };
+  }, [code]);
+
   const handleInputKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && input.trim()) {
       const command = input.trim();
