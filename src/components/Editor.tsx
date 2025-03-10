@@ -7,7 +7,7 @@ interface CodeEditorProps {
   onChange: (value: string | undefined) => void;
 }
 
-export default function CodeEditor({ code, language, onChange }: CodeEditorProps) {
+function CodeEditor({ code, language, onChange }: CodeEditorProps) {
   const [editor, setEditor] = useState<any>(null);
   const [monaco, setMonaco] = useState<any>(null);
 
@@ -190,3 +190,5 @@ export default function CodeEditor({ code, language, onChange }: CodeEditorProps
     </div>
   );
 }
+
+export default CodeEditor;

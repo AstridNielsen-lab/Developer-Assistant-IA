@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Terminal as TerminalIcon, Trash2, Play, GitBranch, Terminal as TerminalTab, Maximize2 } from 'lucide-react';
+import ResizeObserver from 'resize-observer-polyfill';
 
 interface ConsoleProps {
   code: string;
@@ -89,43 +90,60 @@ export default function Console({ code, language }: ConsoleProps) {
   };
 
   const executeCode = () => {
+    if (!code.trim()) {
+      addLog('No code to execute', 'info');
+      return;
+    }
+
     clearConsole();
     
+    if (language !== 'javascript' && language !== 'typescript') {
+      addLog(`Execution of ${language} code is not supported in the browser. Use JavaScript/TypeScript for real-time execution.`, 'info');
+      return;
+    }
+
     const consoleLog = (...args: any[]) => {
-      addLog(args.join(' '), 'output');
+      addLog(args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' '), 'output');
     };
 
     const consoleError = (...args: any[]) => {
-      addLog(args.join(' '), 'error');
+      addLog(args.map(arg => 
+        arg instanceof Error ? arg.message : String(arg)
+      ).join(' '), 'error');
     };
 
     const consoleInfo = (...args: any[]) => {
-      addLog(args.join(' '), 'info');
+      addLog(args.map(arg => String(arg)).join(' '), 'info');
     };
 
     try {
-      // Create a safe environment for code execution
-      const safeEval = new Function(
-        'console',
-        `
-        "use strict";
-        try {
-          ${code}
-        } catch (error) {
-          console.error(error.message);
+      // Create a sandboxed environment for code execution
+      const sandbox = {
+        console: {
+          log: consoleLog,
+          error: consoleError,
+          info: consoleInfo,
+          warn: consoleLog,
+          debug: consoleLog
         }
-        `
-      );
+      };
 
-      safeEval({
-        log: consoleLog,
-        error: consoleError,
-        info: consoleInfo,
-        warn: consoleLog,
-        debug: consoleLog
-      });
+      // Use Function constructor to create a new scope
+      const executor = new Function('sandbox', `
+        with (sandbox) {
+          try {
+            ${code}
+          } catch (error) {
+            console.error(error);
+          }
+        }
+      `);
+
+      executor(sandbox);
     } catch (error) {
-      addLog(error instanceof Error ? error.message : 'An error occurred', 'error');
+      consoleError(error instanceof Error ? error.message : 'An error occurred');
     }
   };
 
@@ -134,7 +152,6 @@ export default function Console({ code, language }: ConsoleProps) {
       const command = input.trim();
       executeTerminalCommand(command);
       
-      // Update command history
       setCommandHistory(prev => [command, ...prev].slice(0, 50));
       setHistoryIndex(-1);
       setInput('');
@@ -155,9 +172,17 @@ export default function Console({ code, language }: ConsoleProps) {
     }
   };
 
+  // Handle console scrolling
   useEffect(() => {
     if (consoleRef.current) {
-      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+      const observer = new ResizeObserver(() => {
+        if (consoleRef.current) {
+          consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+        }
+      });
+
+      observer.observe(consoleRef.current);
+      return () => observer.disconnect();
     }
   }, [logs]);
 
@@ -204,23 +229,23 @@ export default function Console({ code, language }: ConsoleProps) {
             <button
               onClick={executeCode}
               className="p-1 hover:bg-gray-600 rounded flex items-center gap-1 text-green-400"
-              title="Executar código"
+              title="Execute code"
             >
               <Play size={18} />
-              <span className="text-sm">Executar</span>
+              <span className="text-sm">Execute</span>
             </button>
           )}
           <button
             onClick={clearConsole}
             className="p-1 hover:bg-gray-600 rounded"
-            title="Limpar"
+            title="Clear"
           >
             <Trash2 size={18} />
           </button>
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-1 hover:bg-gray-600 rounded"
-            title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
             <Maximize2 size={18} />
           </button>
@@ -260,7 +285,7 @@ export default function Console({ code, language }: ConsoleProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleInputKeyPress}
-            placeholder={activeTab === 'terminal' ? "Digite um comando (ex: help)" : "Digite um comando git (ex: git status)"}
+            placeholder={activeTab === 'terminal' ? "Type a command (e.g., help)" : "Type a git command (e.g., git status)"}
             className="flex-1 bg-gray-900 text-white px-3 py-1 rounded border border-gray-700 focus:outline-none focus:border-blue-500"
             autoFocus
           />
